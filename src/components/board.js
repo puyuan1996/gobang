@@ -6,6 +6,8 @@ import './board.css';
 import bg from '../assets/bg.jpg';
 import { board_size } from '../config';
 import { STATUS } from '../status';
+import axios from 'axios';
+//await waitTimeout(150);
 
 /*
 帮我用React实现一个Board组件，实现的功能是：
@@ -17,13 +19,52 @@ const Board = () => {
   const dispatch = useDispatch();
   const { board, currentPlayer, history, status, size, loading, winner, depth, index } = useSelector((state) => state.game);
 
-  const handleClick = (i, j) => {
+  const handleClick = async (i, j) => {
+//  async function handleClick = (i, j) => {
     if (loading || status !== STATUS.GAMING) return;
     if (board[i][j] === 0) {
-      dispatch(tempMove([i, j]))
-      dispatch(movePiece({ position: [i, j], depth }));
+      debugger; // TDOO
+      // 如果depth为0，发送请求到服务器
+      if (depth === 0) {
+        try {
+          dispatch(tempMove([i, j]))
+
+            // 发送玩家的动作到服务器，并获取服务器的响应
+            const response = await axios.post('http://127.0.0.1:5001/gomoku_ui/', {
+              command: 'step',
+              argument: [i, j], // 你需要将这里的数据格式调整为服务器能够正确解析的格式
+              action: [i, j], // 你需要将这里的数据格式调整为服务器能够正确解析的格式
+//              uid: '玩家的唯一标识'// 如果需要的话
+              uid: `1` // 如果需要的话
+            });
+            // 处理响应
+            // 服务器响应的数据，这里假设服务器返回的bot action格式为 { i: x, j: y }
+            const botAction = response.data.result.action;
+
+          // 使用服务器返回的bot action作为AI执行的动作
+           dispatch(movePiece({ position: [i, j, botAction.i, botAction.j], depth: 0 })); // 修改内在状态相关的参数
+//          dispatch(tempMove([botAction.i, botAction.j]))
+        } catch (error) {
+          console.error('Error communicating with the server: ', error.response || error); // 处理错误
+        }
+      }
+      else {
+        // 如果depth不为0，使用本地Redux action
+        dispatch(tempMove([i, j]))
+        dispatch(movePiece({ position: [i, j], depth }));
+        console.log(' depth != 0 ');
+      }
     }
   };
+
+// 原本的正确的实现，dispatch(tempMove([i, j]))实现了
+//  const handleClick = (i, j) => {
+//    if (loading || status !== STATUS.GAMING) return;
+//    if (board[i][j] === 0) {
+//      dispatch(tempMove([i, j]))
+//      dispatch(movePiece({ position: [i, j], depth }));
+//    }
+//  };
 
   useEffect(() => {
     if (winner === 1 || winner === -1) {

@@ -1,0 +1,46 @@
+9827e15
+
+commit 9827e15a5810007d25f6934045e866df83735395
+Author: Swain <niuyazhe314@outlook.com>
+Date:   Wed Oct 19 00:15:54 2022 +0800
+
+    style(nyz): add ckpt download link
+
+ README.md | 2 ++
+ 1 file changed, 2 insertions(+)
+
+commit 08db4cf3f58d37d21846ecf52d551fe5debd5fdf
+Author: niuyazhe <niuyazhe@sensetime.com>
+Date:   Wed Oct 19 00:13:04 2022 +0800
+
+    fix(nyz): fix app ip bug
+
+ service/app.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+commit e16390c04acde6ad47500e0ea8193962b1c87d43
+Author: niuyazhe <niuyazhe@sensetime.com>
+Date:   Tue Oct 18 23:54:19 2022 +0800
+
+    style(nyz): fix text description
+
+ ui/src/App.tsx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+commit abb1028a16c0b3eb43724e8192d3756763c4f131
+Author: niuyazhe <niuyazhe@sensetime.com>
+Date:   Tue Oct 18 23:50:36 2022 +0800
+
+    feature(nyz): add max padding obs for level 1-4
+
+ service/agent_app.py |  4 +--
+ service/app.py       | 16 ++++++-----
+ service/sheep_env.py | 79 +++++++++++++++++++++++++++++-----------------------
+ 3 files changed, 55 insertions(+), 44 deletions(-)
+
+commit 9f83c80b03238f15e13f180da09fd66e7b0eb3db
+Merge: ad94646 bde2072
+Author: niuyazhe <niuyazhe314@outlook.com>
+Date:   Tue Oct 18 21:37:08 2022 +0800
+
+    Merge branch 'master' into dev-rl

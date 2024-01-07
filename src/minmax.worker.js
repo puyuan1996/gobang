@@ -63,16 +63,41 @@ export const start = (board_size, aiFirst = true, depth = 4) => {
 export const move = (position, depth) => {
   console.log('move', board_size, depth);
   try {
+      debugger; // TDOO
     board.put(position[0], position[1]);
   } catch (e) {
     console.log(e);
   }
+
   if (!board.isGameOver()) {
-    const res = minmax(board, board.role, depth);
-    let move;
-    [score, move, bestPath, currentDepth] = res;
+    let score, move, bestPath, currentDepth;
+
+    if (depth === 0) {
+      debugger; // TDOO
+            try {
+        debugger; // TDOO
+       board.put(position[0], position[1]);
+       } catch (e) {
+        console.log(e);
+      }
+      // 当depth为0时，直接使用输入的position作为结果
+      move = [position[2], position[3]] ; // 假设这里position是一个数组，如[2, 3]
+    } else {
+        try {
+        debugger; // TDOO
+       board.put(position[0], position[1]);
+       } catch (e) {
+        console.log(e);
+      }
+
+      // 当depth不为0时，使用minimax算法计算最佳移动
+      const res = minmax(board, board.role, depth);
+      [score, move, bestPath, currentDepth] = res;
+    }
+    // 执行移动
     board.put(move[0], move[1]);
   }
+
   return getBoardData();
 };
 

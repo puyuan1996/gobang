@@ -1,3 +1,4 @@
+import React from 'react';
 import './control.css';
 import { useDispatch, useSelector } from 'react-redux';
 import { startGame, endGame, undoMove, setAiFirst, setDepth, setIndex } from '../store/gameSlice';
@@ -46,6 +47,7 @@ function Control() {
             onChange={onDepthChange}
             disabled={loading}
             options={[
+              { value: '0', label: 'python_bot_v1' },
               { value: '2', label: '弱智' },
               { value: '4', label: '简单' },
               { value: '6', label: '普通' },
