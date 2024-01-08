@@ -1,0 +1,1709 @@
+diff --git a/backend/agent_app.py b/backend/agent_app.py
+deleted file mode 100644
+index 423a6af..0000000
+--- a/backend/agent_app.py
++++ /dev/null
+@@ -1,248 +0,0 @@
+-# export PATH="/Users/puyuan/miniconda3/envs/arm64-py38/bin:$PATH"
+-# FLASK_APP=agent_app.py FLASK_ENV=development FLASK_DEBUG=1 flask run --port 5001
+-import time
+-import numpy as np
+-import torch
+-from flask import Flask, request, jsonify, make_response
+-# from flask_restplus import Api, Resource, fields
+-from flask_restx import Api, Resource, fields
+-from flask_cors import CORS
+-
+-from threading import Thread
+-from sheep_model import SheepModel
+-from flask import Flask
+-
+-app = Flask(__name__)
+-api = Api(
+-    app=app,
+-    version="0.0.1",
+-    title="gomoku_ui App",
+-    description="Play Sheep with Deep Reinforcement Learning, Powered by OpenDILab"
+-)
+-
+-# CORS(app)
+-
+-@app.after_request
+-def after_request(response):
+-    response.headers.add('Access-Control-Allow-Origin', '*')
+-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+-    return response
+-
+-name_space = api.namespace('gomoku_ui', description='gomoku_ui APIs')
+-model = api.model(
+-    'gomoku_ui params', {
+-        'command': fields.String(required=False, description="Command Field", help="reset, step"),
+-        'argument': fields.Integer(required=False, description="Argument Field", help="reset->level, step->action"),
+-    }
+-)
+-MAX_ENV_NUM = 50
+-ENV_TIMEOUT_SECOND = 60
+-envs = {}
+-model = SheepModel(item_obs_size=80, item_num=30, global_obs_size=19)
+-ckpt = torch.load('ckpt_best.pth.tar', map_location='cpu')['model']
+-ckpt = {'item_encoder.encoder' + k.split('item_encoder')[-1] if 'item_encoder' in k else k: v for k, v in ckpt.items()}  # compatibility for v1 and v2 model
+-model.load_state_dict(ckpt)
+-import sys
+-sys.path.append("/Users/puyuan/code/LightZero/")
+-import pytest
+-from easydict import EasyDict
+-from zoo.board_games.gomoku.envs.gomoku_env import GomokuEnv
+-
+-cfg = EasyDict(
+-  prob_random_agent=0,
+-  board_size=15,
+-  battle_mode='self_play_mode',
+-  channel_last=False,
+-  scale=False,
+-  agent_vs_human=False,
+-  bot_action_type='v1',  # {'v0', 'v1', 'alpha_beta_pruning'}
+-  prob_random_action_in_bot=0.,
+-  check_action_to_connect4_in_bot_v0=False,
+-  # (str) The render mode. Options are 'None', 'state_realtime_mode', 'image_realtime_mode' or 'image_savefile_mode'.
+-  # If None, then the game will not be rendered.
+-  render_mode='state_realtime_mode',  # 'image_realtime_mode' # "state_realtime_mode",
+-  replay_path=None,
+-  screen_scaling=9,
+-  alphazero_mcts_ctree=False,
+-)
+-env = GomokuEnv(cfg)
+-obs = env.reset()
+-test_episodes = 1
+-# for i in range(test_episodes):
+-#   obs = env.reset()
+-#   # print('init board state: ', obs)
+-#   env.render()
+-#   while True:
+-#     # action = env.bot_action()
+-#     # action = env.random_action()
+-#     action = env.human_to_action()
+-#     print('action index of player 1 is:', action)
+-#     print('player 1: ' + env.action_to_string(action))
+-#     obs, reward, done, info = env.step(action)
+-#     env.render()
+-#     if done:
+-#       if reward > 0:
+-#         print('player 1 win')
+-#       else:
+-#         print('draw')
+-#       break
+-#
+-#     action = env.bot_action()
+-#     # action = env.random_action()
+-#     print('action index of player 2 is:', action)
+-#     print('player 2: ' + env.action_to_string(action))
+-#     obs, reward, done, info = env.step(action)
+-#     env.render()
+-#     if done:
+-#       if reward > 0:
+-#         print('player 2 win')
+-#       else:
+-#         print('draw')
+-#       break
+-
+-
+-def random_action(obs, env):
+-    action_mask = obs['action_mask']
+-    action = np.random.choice(len(action_mask), p=action_mask / action_mask.sum())
+-    return action
+-
+-
+-def env_monitor():
+-    while True:
+-        cur_time = time.time()
+-        pop_keys = []
+-        for k, v in envs.items():
+-            if cur_time - v['update_time'] >= ENV_TIMEOUT_SECOND:
+-                pop_keys.append(k)
+-        for k in pop_keys:
+-            envs.pop(k)
+-        time.sleep(1)
+-
+-
+-api.env_thread = Thread(target=env_monitor, daemon=True)
+-api.env_thread.start()
+-
+-
+-@name_space.route("/", methods=['POST'])
+-# @app.route('/your-endpoint', methods=['POST'])
+-class MainClass(Resource):
+-
+-    def options(self):
+-        response = make_response()
+-        response.headers.add("Access-Control-Allow-Origin", "*")
+-        response.headers.add('Access-Control-Allow-Headers', "*")
+-        response.headers.add('Access-Control-Allow-Methods', "*")
+-        return response
+-
+-    @api.expect(model)
+-    def post(self):
+-        try:
+-            print('position 1')
+-            t_start = time.time()
+-            data = request.json
+-            cmd, arg, uid = data['command'], data['argument'], data['uid']
+-            print(request.remote_addr)
+-            ip = request.remote_addr + uid
+-            print(cmd, arg, uid, ip)
+-            print('envs:', envs)
+-
+-            # if ip not in envs:
+-            #     print('ip not in envs')
+-            #     if cmd == 'reset':
+-            #         if len(envs) >= MAX_ENV_NUM:
+-            #             response = jsonify(
+-            #                 {
+-            #                     "statusCode": 501,
+-            #                     "status": "No enough env resource, please wait a moment",
+-            #                 }
+-            #             )
+-            #             response.headers.add('Access-Control-Allow-Origin', '*')
+-            #             return response
+-            #         else:
+-            #             env = SheepEnv(1, agent=True, max_padding=True)
+-            #             env.seed(0)
+-            #             envs[ip] = {'env': env, 'update_time': time.time()}
+-            #     else:
+-            #         response = jsonify(
+-            #             {
+-            #                 "statusCode": 501,
+-            #                 "status": "No response for too long time, please reset the game",
+-            #             }
+-            #         )
+-            #         response.headers.add('Access-Control-Allow-Origin', '*')
+-            #         return response
+-            # else:
+-            #     env = envs[ip]['env']
+-            #     envs[ip]['update_time'] = time.time()
+-
+-            if cmd == 'reset':
+-                obs = env.reset()
+-                bot_action = env.random_action()
+-                # action = model.compute_action(obs)
+-                print('reset bot action: {}'.format(bot_action))
+-                response = jsonify(
+-                    {
+-                        "statusCode": 200,
+-                        "status": "Execution action",
+-                        "result": {
+-                            'board': env.board.tolist(),  # 假设 env.board 是一个 NumPy 数组
+-                            'action': bot_action,
+-                            # 'done': done,
+-                            # 'info': info,
+-                        }
+-                    }
+-                )
+-
+-            elif cmd == 'step':
+-                data = request.json
+-                action = data.get('action')  # 前端发送的动作  action: [i, j] 从0开始的，表示下在第i+1行，第j+1列
+-                action = action[0] * 15 + action[1]
+-                # 更新游戏环境
+-                observation, reward, done, info = env.step(action)
+-                # 如果游戏没有结束，获取 bot 的动作
+-                if not done:
+-                    # bot_action = env.random_action()
+-                    bot_action = env.bot_action()
+-                    # 更新环境状态
+-                    _, _, done, _ = env.step(bot_action)
+-                else:
+-                    bot_action = None
+-                # 准备响应数据
+-                observation, reward, done, info = None, None, None, None
+-                print('orig bot action: {}'.format(bot_action))
+-                bot_action = {'i':  int(bot_action // 15), 'j': int(bot_action % 15)}
+-                print('bot action: {}'.format(bot_action))
+-                response = {
+-                    "statusCode": 200,
+-                    "status": "Execution action",
+-                    "result": {
+-                        # 'board': env.board.tolist(),  # 假设 env.board 是一个 NumPy 数组
+-                        'board': None,  # 假设 env.board 是一个 NumPy 数组
+-                        # 'action': bot_action,  # bot action格式为 { i: x, j: y }
+-                        'action': bot_action,  # bot action格式为 { i: x, j: y }
+-                        'done': done,
+-                        'info': info
+-                    }
+-                }
+-            else:
+-                response = jsonify({
+-                    "statusCode": 500,
+-                    "status": "Invalid command: {}".format(cmd),
+-                })
+-                response.headers.add('Access-Control-Allow-Origin', '*')
+-                return response
+-            print('backend process time: {}'.format(time.time() - t_start))
+-            print('current env number: {}'.format(len(envs)))
+-            # response.headers.add('Access-Control-Allow-Origin', '*')
+-            return response
+-        except Exception as e:
+-            import traceback
+-            print(repr(e))
+-            print(traceback.format_exc())
+-            response = jsonify({
+-                "statusCode": 500,
+-                "status": "Could not execute action",
+-            })
+-            response.headers.add('Access-Control-Allow-Origin', '*')
+-            return response
+diff --git a/backend/app.py b/backend/app.py
+index 2928acc..400b6db 100644
+--- a/backend/app.py
++++ b/backend/app.py
+@@ -1,28 +1,63 @@
++# export PATH="/Users/puyuan/miniconda3/envs/arm64-py38/bin:$PATH"
++# FLASK_APP=app.py FLASK_ENV=development FLASK_DEBUG=1 flask run --port 5001
+ import time
+ from flask import Flask, request, jsonify, make_response
+-from flask_restplus import Api, Resource, fields
++from flask_restx import Api, Resource, fields
+ from threading import Thread
+-from sheep_env import SheepEnv
+ 
+-flask_app = Flask(__name__)
+-app = Api(
+-    app=flask_app,
++app = Flask(__name__)
++api = Api(
++    app=app,
+     version="0.0.1",
+-    title="DI-sheep App",
+-    description="Play Sheep with Deep Reinforcement Learning, Powered by OpenDILab"
++    title="gomoku_ui App",
++    description="Play Gomoku with LightZero Agent, Powered by OpenDILab"
+ )
+ 
+-name_space = app.namespace('DI-sheep', description='DI-sheep APIs')
+-model = app.model(
+-    'DI-sheep params', {
++
++@app.after_request
++def after_request(response):
++    response.headers.add('Access-Control-Allow-Origin', '*')
++    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
++    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
++    return response
++
++
++name_space = api.namespace('gomoku_ui', description='gomoku_ui APIs')
++model = api.model(
++    'gomoku_ui params', {
+         'command': fields.String(required=False, description="Command Field", help="reset, step"),
+         'argument': fields.Integer(required=False, description="Argument Field", help="reset->level, step->action"),
+     }
+ )
+ MAX_ENV_NUM = 50
+ ENV_TIMEOUT_SECOND = 60
+-envs = {}
++envs = {'127.0.0.11'}
++
++
++import sys
++sys.path.append("/Users/puyuan/code/LightZero/")
++from easydict import EasyDict
++from zoo.board_games.gomoku.envs.gomoku_env import GomokuEnv
++from agent import Agent
+ 
++cfg = EasyDict(
++    prob_random_agent=0,
++    board_size=15,
++    battle_mode='self_play_mode',
++    channel_last=False,
++    scale=False,
++    agent_vs_human=False,
++    bot_action_type='v1',  # {'v0', 'v1', 'alpha_beta_pruning'}
++    prob_random_action_in_bot=0.,
++    check_action_to_connect4_in_bot_v0=False,
++    render_mode='state_realtime_mode',  # 'image_realtime_mode' # "state_realtime_mode",
++    replay_path=None,
++    screen_scaling=9,
++    alphazero_mcts_ctree=False,
++)
++env = GomokuEnv(cfg)
++obs = env.reset()
++agent = Agent()
+ 
+ def env_monitor():
+     while True:
+@@ -36,30 +71,27 @@ def env_monitor():
+         time.sleep(1)
+ 
+ 
+-app.env_thread = Thread(target=env_monitor, daemon=True)
+-app.env_thread.start()
++api.env_thread = Thread(target=env_monitor, daemon=True)
++api.env_thread.start()
+ 
+ 
+-@name_space.route("/")
++@name_space.route("/", methods=['POST'])
+ class MainClass(Resource):
+ 
+-    def options(self):
+-        response = make_response()
+-        response.headers.add("Access-Control-Allow-Origin", "*")
+-        response.headers.add('Access-Control-Allow-Headers', "*")
+-        response.headers.add('Access-Control-Allow-Methods', "*")
+-        return response
+-
+-    @app.expect(model)
++    @api.expect(model)
+     def post(self):
+         try:
++            # print('position 1')
+             t_start = time.time()
+             data = request.json
+             cmd, arg, uid = data['command'], data['argument'], data['uid']
+-            ip = request.remote_addr
+-            ip = str(ip) + str(uid)
++            print(request.remote_addr)
++            ip = request.remote_addr + uid
++            print(cmd, arg, uid, ip)
++            print('envs:', envs)
+ 
+             if ip not in envs:
++                print('ip not in envs')
+                 if cmd == 'reset':
+                     if len(envs) >= MAX_ENV_NUM:
+                         response = jsonify(
+@@ -71,7 +103,7 @@ class MainClass(Resource):
+                         response.headers.add('Access-Control-Allow-Origin', '*')
+                         return response
+                     else:
+-                        env = SheepEnv(1, agent=False)
++                        env = GomokuEnv(cfg)
+                         envs[ip] = {'env': env, 'update_time': time.time()}
+                 else:
+                     response = jsonify(
+@@ -85,34 +117,56 @@ class MainClass(Resource):
+             else:
+                 env = envs[ip]['env']
+                 envs[ip]['update_time'] = time.time()
++
+             if cmd == 'reset':
+-                env.reset(arg)
+-                scene = [item.to_json() for item in env.scene if item is not None]
++                observation = env.reset()
++                agent_action = env.random_action()
++                # agent_action = agent.compute_action(observation)
++                print('reset bot action: {}'.format(agent_action))
++                done, info = False, None
+                 response = jsonify(
+                     {
+                         "statusCode": 200,
+                         "status": "Execution action",
+                         "result": {
+-                            "scene": scene,
+-                            "max_item_num": env.total_item_num,
++                            'board': env.board.tolist(),  # 假设 env.board 是一个 NumPy 数组
++                            'action': agent_action,
++                            'done': done,
++                            'info': info,
+                         }
+                     }
+                 )
++
+             elif cmd == 'step':
+-                _, _, done, _ = env.step(arg)
+-                scene = [item.to_json() for item in env.scene if item is not None]
+-                bucket = [item.to_json() for item in env.bucket]
+-                response = jsonify(
+-                    {
+-                        "statusCode": 200,
+-                        "status": "Execution action",
+-                        "result": {
+-                            "scene": scene,
+-                            "bucket": bucket,
+-                            "done": done,
+-                        }
++                data = request.json
++                action = data.get('action')  # 前端发送的动作  action: [i, j] 从0开始的，表示下在第i+1行，第j+1列
++                action = action[0] * 15 + action[1]
++                # 更新游戏环境
++                observation, reward, done, info = env.step(action)
++                # 如果游戏没有结束，获取 bot 的动作
++                if not done:
++                    # agent_action = env.random_action()
++                    agent_action = agent.compute_action(observation)
++                    # 更新环境状态
++                    _, _, done, _ = env.step(agent_action)
++                    # 准备响应数据
++                    print('orig bot action: {}'.format(agent_action))
++                    agent_action = {'i': int(agent_action // 15), 'j': int(agent_action % 15)}
++                    print('bot action: {}'.format(agent_action))
++                else:
++                    agent_action = None
++                    observation, reward, done, info = None, None, None, None
++
++                response = {
++                    "statusCode": 200,
++                    "status": "Execution action",
++                    "result": {
++                        'board': None,  # 假设 env.board 是一个 NumPy 数组
++                        'action': agent_action,  # bot action格式为 { i: x, j: y }
++                        'done': done,
++                        'info': info
+                     }
+-                )
++                }
+             else:
+                 response = jsonify({
+                     "statusCode": 500,
+@@ -122,7 +176,7 @@ class MainClass(Resource):
+                 return response
+             print('backend process time: {}'.format(time.time() - t_start))
+             print('current env number: {}'.format(len(envs)))
+-            response.headers.add('Access-Control-Allow-Origin', '*')
++            # response.headers.add('Access-Control-Allow-Origin', '*')
+             return response
+         except Exception as e:
+             import traceback
+diff --git a/backend/flask_hello.py b/backend/flask_hello.py
+deleted file mode 100644
+index 87b4b21..0000000
+--- a/backend/flask_hello.py
++++ /dev/null
+@@ -1,7 +0,0 @@
+-from flask import Flask
+-
+-app = Flask(__name__)
+-
+-@app.route("/")
+-def hello_world():
+-    return "<p>Hello, World!</p>"
+\ No newline at end of file
+diff --git a/backend/sheep_env.py b/backend/sheep_env.py
+deleted file mode 100644
+index 8b3d8ca..0000000
+--- a/backend/sheep_env.py
++++ /dev/null
+@@ -1,248 +0,0 @@
+-from typing import Tuple, Optional, Dict
+-from collections import deque
+-import copy
+-import gym
+-import json
+-import uuid
+-import numpy as np
+-
+-
+-class Item:
+-
+-    def __init__(self, icon, offset, row, column):
+-        self.icon = icon
+-        self.offset = offset
+-        self.row = row
+-        self.column = column
+-        self.uid = str(uuid.uuid4())
+-        self.x = column * 100 + offset
+-        self.y = row * 100 + offset
+-        self.grid_x = self.x % 25
+-        self.grid_y = self.y % 25
+-        self.accessible = 1
+-        self.visible = 1
+-
+-    def __repr__(self) -> str:
+-        return 'icon({})'.format(self.icon)
+-
+-    def to_json(self):
+-        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=2)
+-
+-
+-class SheepEnv(gym.Env):
+-    max_level = 10
+-    R = 10
+-    icons = [i for i in range(10)]
+-    ranges = [
+-        [2, 6],
+-        [1, 6],
+-        [1, 7],
+-        [0, 7],
+-        [0, 8],
+-    ]
+-
+-    def __init__(self, level: int, bucket_length: int = 7, agent: bool = True, max_padding: bool = False) -> None:
+-        self.level = level
+-        assert 1 <= self.level <= self.max_level
+-        self.bucket_length = bucket_length
+-        self.agent = agent
+-        self.max_padding = max_padding
+-        self._make_game()
+-
+-    def seed(self, seed: int) -> None:
+-        self._seed = seed
+-        np.random.seed(self._seed)
+-
+-    def _make_game(self) -> None:
+-        # TODO wash scene
+-        self.icon_pool = self.icons[:2 * self.level]
+-        self.offset_pool = [0, 25, 50, 75][:1 + self.level]
+-        self.selected_range = self.ranges[min(4, self.level - 1)]
+-        self.max_item_per_icon = 9
+-        self.max_level_item_num = len(self.icons) * self.max_item_per_icon + 2
+-        if self.level >= 10:
+-            self.item_per_icon = 6 + (self.level - 5 + 1) // 2
+-            # add non-divisible items
+-            self.item_non_div = 2
+-        else:
+-            self.item_per_icon = 6
+-            self.item_non_div = 0
+-        self.total_item_num = len(self.icon_pool) * self.item_per_icon + self.item_non_div
+-
+-        self.scene = []
+-        self.bucket = deque(maxlen=self.bucket_length)
+-
+-        N = self.selected_range[1] - self.selected_range[0] - 1
+-        for i in range(len(self.icon_pool)):
+-            for j in range(self.item_per_icon):
+-                row = self.selected_range[0] + np.int64(N * np.random.random())
+-                column = self.selected_range[0] + np.int64(N * np.random.random())
+-                offset = self.offset_pool[np.int64(np.random.random() * len(self.offset_pool))]
+-                item = Item(self.icon_pool[i], offset, row, column)
+-                self.scene.append(item)
+-        if self.item_non_div > 0:
+-            for icon in np.random.choice(self.icon_pool, size=self.item_non_div, replace=False):
+-                row = self.selected_range[0] + np.int64(N * np.random.random())
+-                column = self.selected_range[0] + np.int64(N * np.random.random())
+-                offset = self.offset_pool[np.int64(np.random.random() * len(self.offset_pool))]
+-                item = Item(int(icon), offset, row, column)
+-                self.scene.append(item)
+-
+-        self.cur_item_num = len(self.scene)
+-        self.reward_3tiles = self.R * 0.5 / (len(self.scene) // 3)
+-
+-        self._update_visible_accessible()
+-        self._set_space()
+-
+-    def _update_visible_accessible(self) -> None:
+-        for i in range(self.total_item_num):
+-            covered_items = []
+-            item1 = self.scene[i]
+-            if item1 is None:
+-                continue
+-            item1.accessible = 1
+-            for j in range(i + 1, self.total_item_num):
+-                item2 = self.scene[j]
+-                if item2 is None:
+-                    continue
+-                if not (item2.x + 100 <= item1.x or item2.x >= item1.x + 100 or item2.y + 100 <= item1.y
+-                        or item2.y >= item1.y + 100):
+-                    item1.accessible = 0
+-                    if not self.agent:
+-                        break
+-                    covered_items.append(item2)
+-            if self.agent and len(covered_items) > 0:
+-                flag = np.zeros((2, 2)).astype(np.int64)  # core offset 50x50 is visible
+-                core_x, core_y = item1.x + 25, item1.y + 25
+-                for item in covered_items:
+-                    min_x = max(core_x, item.x)
+-                    max_x = min(core_x + 50, item.x + 100)
+-                    min_y = max(core_y, item.y)
+-                    max_y = min(core_y + 50, item.y + 100)
+-                    if min_x < max_x or min_y < max_y:
+-                        # top left: (max_x, max_y)
+-                        # bottom right: (min_x, min_y)
+-                        flag[(min_x - core_x) // 25:(max_x - core_x) // 25,
+-                             (min_y - core_y) // 25:(max_y - core_y) // 25] = 1
+-                        if flag.sum() == 4:
+-                            break
+-                item1.visible = int(flag.sum() < 4)
+-            else:
+-                item1.visible = 1
+-
+-    def _execute_action(self, action: int) -> float:
+-        action_item = copy.deepcopy(self.scene[action])
+-        assert action_item is not None, action
+-        self.scene[action] = None
+-        self.cur_item_num -= 1
+-        same_items = []
+-        for i in range(len(self.bucket)):
+-            item = self.bucket[i]
+-            if item.icon == action_item.icon:
+-                same_items.append(item)
+-
+-        if len(same_items) == 2:
+-            for item in same_items:
+-                self.bucket.remove(item)
+-            return copy.deepcopy(self.reward_3tiles)  # necessary deepcopy
+-        else:
+-            self.bucket.append(action_item)
+-            return 0.
+-
+-    def reset(self, level: Optional[int] = None) -> Dict:
+-        if level is not None:
+-            self.level = level
+-            assert 1 <= self.level <= self.max_level
+-        self._make_game()
+-        self._set_space()
+-        return self._get_obs()
+-
+-    def close(self) -> None:
+-        pass
+-
+-    # usually overwritten methods
+-
+-    def step(self, action: int) -> Tuple:
+-        rew = self._execute_action(action)
+-        self._update_visible_accessible()
+-
+-        obs = self._get_obs()
+-        if self.cur_item_num == 0:
+-            rew += self.R
+-            done = True
+-        elif len(self.bucket) == self.bucket_length:
+-            rew -= self.R
+-            done = True
+-        else:
+-            done = False
+-        info = {}
+-        return obs, rew, done, info
+-
+-    def _get_obs(self) -> Dict:
+-        item_obs = np.zeros((self.total_item_num, self.item_size))
+-        action_mask = np.zeros(self.total_item_num).astype(np.uint8)
+-
+-        L, N = self.L, self.N
+-        p1, p2, p3 = L + N, L + N + N, L + N + N + 2
+-        for i in range(len(self.scene)):
+-            item = self.scene[i]
+-            if item is None:
+-                item_obs[i][L - 1] = 1
+-            else:
+-                item_obs[i][L + item.grid_x] = 1
+-                item_obs[i][p1 + item.grid_y] = 1
+-                item_obs[i][p3 + item.visible] = 1
+-                if item.visible:
+-                    item_obs[i][item.icon] = 1
+-                    item_obs[i][p2 + item.accessible] = 1
+-                else:
+-                    item_obs[i][L - 2] = 1
+-                if item.accessible:
+-                    action_mask[i] = 1
+-
+-        bucket_obs = np.zeros(3 * len(self.icons))
+-        bucket_icon_stat = [0 for _ in range(len(self.icons))]
+-        for item in self.bucket:
+-            bucket_icon_stat[item.icon] += 1
+-        for i in range(len(bucket_icon_stat)):
+-            bucket_obs[i * 3 + bucket_icon_stat[i]] = 1
+-
+-        global_obs = np.zeros(self.global_size)
+-        if self.max_padding:
+-            global_obs[self.cur_item_num // self.max_item_per_icon] = 1
+-        else:
+-            global_obs[self.cur_item_num // self.item_per_icon] = 1
+-        global_obs[self.global_size - self.bucket_length - 1 + len(self.bucket)] = 1
+-
+-        return {
+-            'item_obs': item_obs,
+-            'bucket_obs': bucket_obs,
+-            'global_obs': global_obs,
+-            'action_mask': action_mask,
+-        }
+-
+-    def _set_space(self) -> None:
+-        if self.max_padding:
+-            N = self.ranges[-1][1] - self.ranges[-1][0]
+-            # icon + x + y + accessible + visible
+-            L = len(self.icons) + 2  # +2 for not visible and move out
+-        else:
+-            N = self.selected_range[1] - self.selected_range[0]
+-            # icon + x + y + accessible + visible
+-            L = len(self.icon_pool) + 2  # +2 for not visible and move out
+-        self.L, self.N = L, N
+-        self.item_size = L + 4 * N * 2 + 2 + 2
+-        if self.max_padding:
+-            self.global_size = self.max_level_item_num // self.max_item_per_icon + 1 + self.bucket_length + 1
+-        else:
+-            self.global_size = self.total_item_num // self.item_per_icon + 1 + self.bucket_length + 1
+-        self.observation_space = gym.spaces.Dict(
+-            {
+-                'item_obs': gym.spaces.Box(0, 1, dtype=np.float32, shape=(self.total_item_num, self.item_size)),
+-                'bucket_obs': gym.spaces.Box(0, 1, dtype=np.float32, shape=(3 * len(self.icons), )),
+-                'global_obs': gym.spaces.Box(0, 1, dtype=np.float32, shape=(self.global_size, )),
+-                'action_mask': gym.spaces.Box(0, 1, dtype=np.float32, shape=(self.total_item_num, ))  # TODO
+-            }
+-        )
+-        self.action_space = gym.spaces.Discrete(self.total_item_num)
+-        self.reward_space = gym.spaces.Box(-self.R * 1.5, self.R * 1.5, dtype=np.float32)
+diff --git a/backend/sheep_model.py b/backend/sheep_model.py
+deleted file mode 100644
+index bbf29ba..0000000
+--- a/backend/sheep_model.py
++++ /dev/null
+@@ -1,126 +0,0 @@
+-import torch
+-import torch.nn as nn
+-import treetensor.torch as ttorch
+-from ding.torch_utils import Transformer, MLP, unsqueeze, to_tensor
+-
+-
+-class ItemEncoder(nn.Module):
+-    encoder_type = ['TF', 'MLP', 'two_stage_MLP']
+-
+-    def __init__(self, item_obs_size=60, item_num=30, item_encoder_type='TF', hidden_size=64, activation=nn.ReLU()):
+-        super(ItemEncoder, self).__init__()
+-        assert item_encoder_type in self.encoder_type, "not support item encoder type: {}/{}".format(item_encoder_type, self.encoder_type)
+-        self.item_encoder_type = item_encoder_type
+-        self.item_num = item_num
+-        self.hidden_size = hidden_size
+-
+-        if self.item_encoder_type == 'TF':
+-            self.encoder = Transformer(
+-                item_obs_size,
+-                hidden_dim=2 * hidden_size,
+-                output_dim=hidden_size,
+-                activation=activation
+-            )
+-        elif self.item_encoder_type == 'MLP':
+-            self.encoder = MLP(
+-                item_obs_size,
+-                hidden_size,
+-                hidden_size,
+-                layer_num=3,
+-                activation=activation
+-            )
+-        elif self.item_encoder_type == 'two_stage_MLP':
+-            self.trans_len = 16
+-            self.encoder_1 = MLP(
+-                item_obs_size,
+-                hidden_size,
+-                self.trans_len,
+-                layer_num=3,
+-                activation=activation
+-            )
+-            self.encoder_2 = MLP(
+-                self.trans_len*self.item_num,
+-                hidden_size,
+-                self.item_num*hidden_size,
+-                layer_num=2,
+-                activation=activation
+-            )
+-
+-    def forward(self, item_obs):
+-        if self.item_encoder_type == 'two_stage_MLP':
+-            item_embedding_1 = self.encoder_1(item_obs)   # (B, M, L)
+-            item_embedding_2 = torch.reshape(item_embedding_1, [-1, self.trans_len*self.item_num])
+-            item_embedding = self.encoder_2(item_embedding_2)
+-            item_embedding = torch.reshape(item_embedding, [-1, self.item_num, self.hidden_size])
+-        else:
+-            item_embedding = self.encoder(item_obs)
+-        return item_embedding
+-
+-
+-class SheepModel(nn.Module):
+-    mode = ['compute_actor', 'compute_critic', 'compute_actor_critic']
+-
+-    def __init__(self, item_obs_size=60, item_num=30, item_encoder_type='TF', bucket_obs_size=30, global_obs_size=17, hidden_size=64, activation=nn.ReLU(), ttorch_return=False):
+-        super(SheepModel, self).__init__()
+-        self.item_encoder = ItemEncoder(item_obs_size, item_num, item_encoder_type, hidden_size, activation=activation)
+-        self.bucket_encoder = MLP(bucket_obs_size, hidden_size, hidden_size, layer_num=3, activation=activation)
+-        self.global_encoder = MLP(global_obs_size, hidden_size, hidden_size, layer_num=2, activation=activation)
+-        self.value_head = nn.Sequential(
+-            MLP(hidden_size, hidden_size, hidden_size, layer_num=2, activation=activation), nn.Linear(hidden_size, 1)
+-        )
+-        self.ttorch_return = ttorch_return
+-
+-    def compute_actor(self, x):
+-        item_embedding = self.item_encoder(x['item_obs'])
+-        bucket_embedding = self.bucket_encoder(x['bucket_obs'])
+-        global_embedding = self.global_encoder(x['global_obs'])
+-
+-        key = item_embedding
+-        query = bucket_embedding + global_embedding
+-        query = query.unsqueeze(1)
+-        logit = (key * query).sum(2)
+-        logit.masked_fill_(~x['action_mask'].bool(), value=-1e9)
+-        if self.ttorch_return:
+-            return logit
+-        else:
+-            return {'logit': logit}
+-
+-    def compute_critic(self, x):
+-        item_embedding = self.item_encoder(x['item_obs'])
+-        bucket_embedding = self.bucket_encoder(x['bucket_obs'])
+-        global_embedding = self.global_encoder(x['global_obs'])
+-
+-        embedding = item_embedding.mean(1) + bucket_embedding + global_embedding
+-        value = self.value_head(embedding)
+-        if self.ttorch_return:
+-            return value.squeeze(1)
+-        else:
+-            return {'value': value.squeeze(1)}
+-
+-    def compute_actor_critic(self, x):
+-        item_embedding = self.item_encoder(x['item_obs'])
+-        bucket_embedding = self.bucket_encoder(x['bucket_obs'])
+-        global_embedding = self.global_encoder(x['global_obs'])
+-
+-        key = item_embedding
+-        query = bucket_embedding + global_embedding
+-        query = query.unsqueeze(1)
+-        logit = (key * query).sum(2)
+-        logit.masked_fill_(~x['action_mask'].bool(), value=-1e9)
+-
+-        embedding = item_embedding.mean(1) + bucket_embedding + global_embedding
+-        value = self.value_head(embedding)
+-        if self.ttorch_return:
+-            return ttorch.as_tensor({'logit': logit, 'value': value.squeeze(1)})
+-        else:
+-            return {'logit': logit, 'value': value.squeeze(1)}
+-
+-    def forward(self, x, mode):
+-        assert mode in self.mode, "not support forward mode: {}/{}".format(mode, self.mode)
+-        return getattr(self, mode)(x)
+-
+-    def compute_action(self, x):
+-        x = unsqueeze(to_tensor(x))
+-        with torch.no_grad():
+-            logit = self.compute_actor(x)['logit']
+-            return logit.argmax(dim=-1)[0].item()
+diff --git a/backend/sheep_ppo_level9_main.py b/backend/sheep_ppo_level9_main.py
+deleted file mode 100644
+index 71b16d2..0000000
+--- a/backend/sheep_ppo_level9_main.py
++++ /dev/null
+@@ -1,123 +0,0 @@
+-import os
+-from easydict import EasyDict
+-from tensorboardX import SummaryWriter
+-from ding.config import compile_config
+-from ding.envs import create_env_manager, DingEnvWrapper, EvalEpisodeReturnEnv
+-from ding.policy import PPOPolicy
+-from ding.worker import BaseLearner, create_serial_collector, InteractionSerialEvaluator
+-from ding.utils import set_pkg_seed
+-
+-from sheep_env import SheepEnv
+-from sheep_model import SheepModel
+-
+-sheep_ppo_config = dict(
+-    exp_name='level9/sheep_ppo_MLP_1M_seed0',
+-    env=dict(
+-        env_id='Sheep-v0',
+-        level=10,
+-        collector_env_num=8,
+-        evaluator_env_num=10,
+-        n_evaluator_episode=10,
+-        # stop_value=15,
+-        stop_value=1e6,     # to run fixed env step
+-    ),
+-    policy=dict(
+-        cuda=True,
+-        recompute_adv=True,
+-        action_space='discrete',
+-        model=dict(),
+-        learn=dict(
+-            epoch_per_collect=10,
+-            batch_size=320,
+-            learning_rate=3e-4,
+-            value_weight=0.5,
+-            entropy_weight=0.001,
+-            clip_ratio=0.2,
+-            adv_norm=False,
+-            value_norm=True,
+-        ),
+-        collect=dict(
+-            n_sample=3200,
+-            discount_factor=0.99,
+-            gae_lambda=0.95,
+-        ),
+-        eval=dict(evaluator=dict(eval_freq=500, )),
+-    ),
+-)
+-sheep_ppo_config = EasyDict(sheep_ppo_config)
+-main_config = sheep_ppo_config
+-
+-sheep_ppo_create_config = dict(
+-    env=dict(
+-        type='mujoco',
+-        import_names=['dizoo.mujoco.envs.mujoco_env'],
+-    ),
+-    env_manager=dict(type='subprocess'),
+-    policy=dict(type='ppo', ),
+-)
+-sheep_ppo_create_config = EasyDict(sheep_ppo_create_config)
+-create_config = sheep_ppo_create_config
+-
+-
+-def sheep_env_fn(level):
+-    return DingEnvWrapper(
+-        SheepEnv(level), cfg={'env_wrapper': [
+-            lambda env: EvalEpisodeReturnEnv(env),
+-        ]}
+-    )
+-
+-
+-def main(input_cfg, seed, max_env_step=int(1e6), max_train_iter=int(1e6)):
+-    cfg, create_cfg = input_cfg
+-    cfg = compile_config(cfg, seed=seed, auto=True, create_cfg=create_cfg)
+-    collector_env = create_env_manager(
+-        cfg.env.manager, [lambda: sheep_env_fn(cfg.env.level) for _ in range(cfg.env.collector_env_num)]
+-    )
+-    evaluator_env = create_env_manager(
+-        cfg.env.manager, [lambda: sheep_env_fn(cfg.env.level) for _ in range(cfg.env.evaluator_env_num)]
+-    )
+-    collector_env.seed(cfg.seed, dynamic_seed=False)
+-    evaluator_env.seed(cfg.seed, dynamic_seed=False)
+-    set_pkg_seed(cfg.seed, use_cuda=cfg.policy.cuda)
+-
+-    obs_space = collector_env._env_ref.observation_space
+-    model = SheepModel(
+-        obs_space['item_obs'].shape[1],
+-        obs_space['item_obs'].shape[0],
+-        'TF',
+-        obs_space['bucket_obs'].shape[0],
+-        obs_space['global_obs'].shape[0]
+-    )
+-    policy = PPOPolicy(cfg.policy, model=model, enable_field=['learn', 'collect', 'eval'])
+-
+-    tb_logger = SummaryWriter(os.path.join('./{}/log/'.format(cfg.exp_name), 'serial'))
+-    learner = BaseLearner(cfg.policy.learn.learner, policy.learn_mode, tb_logger, exp_name=cfg.exp_name)
+-    collector = create_serial_collector(
+-        cfg.policy.collect.collector,
+-        env=collector_env,
+-        policy=policy.collect_mode,
+-        tb_logger=tb_logger,
+-        exp_name=cfg.exp_name
+-    )
+-    evaluator = InteractionSerialEvaluator(
+-        cfg.policy.eval.evaluator, evaluator_env, policy.eval_mode, tb_logger, exp_name=cfg.exp_name
+-    )
+-
+-    learner.call_hook('before_run')
+-
+-    while True:
+-        if evaluator.should_eval(learner.train_iter):
+-            stop, reward = evaluator.eval(learner.save_checkpoint, learner.train_iter, collector.envstep)
+-            if stop:
+-                break
+-        new_data = collector.collect(train_iter=learner.train_iter)
+-
+-        learner.train(new_data, collector.envstep)
+-        if collector.envstep >= max_env_step or learner.train_iter >= max_train_iter:
+-            break
+-
+-    learner.call_hook('after_run')
+-
+-
+-if __name__ == "__main__":
+-    main([main_config, create_config], seed=0)
+diff --git a/backend/sheep_ppo_main.py b/backend/sheep_ppo_main.py
+deleted file mode 100644
+index 9704beb..0000000
+--- a/backend/sheep_ppo_main.py
++++ /dev/null
+@@ -1,122 +0,0 @@
+-import os
+-from easydict import EasyDict
+-from tensorboardX import SummaryWriter
+-from ding.config import compile_config
+-from ding.envs import create_env_manager, DingEnvWrapper, EvalEpisodeReturnEnv
+-from ding.policy import PPOPolicy
+-from ding.worker import BaseLearner, create_serial_collector, InteractionSerialEvaluator
+-from ding.utils import set_pkg_seed
+-
+-from sheep_env import SheepEnv
+-from sheep_model import SheepModel
+-
+-sheep_ppo_config = dict(
+-    exp_name='sheep_ppo_seed0',
+-    env=dict(
+-        env_id='Sheep-v0',
+-        level=2,
+-        collector_env_num=8,
+-        evaluator_env_num=10,
+-        n_evaluator_episode=10,
+-        stop_value=15,
+-    ),
+-    policy=dict(
+-        cuda=True,
+-        recompute_adv=True,
+-        action_space='discrete',
+-        model=dict(),
+-        learn=dict(
+-            epoch_per_collect=10,
+-            batch_size=320,
+-            learning_rate=3e-4,
+-            value_weight=0.5,
+-            entropy_weight=0.001,
+-            clip_ratio=0.2,
+-            adv_norm=False,
+-            value_norm=True,
+-        ),
+-        collect=dict(
+-            n_sample=3200,
+-            discount_factor=0.99,
+-            gae_lambda=0.95,
+-        ),
+-        eval=dict(evaluator=dict(eval_freq=500, )),
+-    ),
+-)
+-sheep_ppo_config = EasyDict(sheep_ppo_config)
+-main_config = sheep_ppo_config
+-
+-sheep_ppo_create_config = dict(
+-    env=dict(
+-        type='mujoco',
+-        import_names=['dizoo.mujoco.envs.mujoco_env'],
+-    ),
+-    env_manager=dict(type='subprocess'),
+-    policy=dict(type='ppo', ),
+-)
+-sheep_ppo_create_config = EasyDict(sheep_ppo_create_config)
+-create_config = sheep_ppo_create_config
+-
+-
+-def sheep_env_fn(level):
+-    return DingEnvWrapper(
+-        SheepEnv(level), cfg={'env_wrapper': [
+-            lambda env: EvalEpisodeReturnEnv(env),
+-        ]}
+-    )
+-
+-
+-def main(input_cfg, seed, max_env_step=int(1e7), max_train_iter=int(1e7)):
+-    cfg, create_cfg = input_cfg
+-    cfg = compile_config(cfg, seed=seed, auto=True, create_cfg=create_cfg)
+-    collector_env = create_env_manager(
+-        cfg.env.manager, [lambda: sheep_env_fn(cfg.env.level) for _ in range(cfg.env.collector_env_num)]
+-    )
+-    evaluator_env = create_env_manager(
+-        cfg.env.manager, [lambda: sheep_env_fn(cfg.env.level) for _ in range(cfg.env.evaluator_env_num)]
+-    )
+-    collector_env.seed(cfg.seed, dynamic_seed=False)
+-    evaluator_env.seed(cfg.seed, dynamic_seed=False)
+-    set_pkg_seed(cfg.seed, use_cuda=cfg.policy.cuda)
+-
+-    obs_space = collector_env._env_ref.observation_space
+-    model = SheepModel(
+-        obs_space['item_obs'].shape[1],
+-        obs_space['item_obs'].shape[0],
+-        'TF',
+-        obs_space['bucket_obs'].shape[0],
+-        obs_space['global_obs'].shape[0]
+-    )
+-    policy = PPOPolicy(cfg.policy, model=model, enable_field=['learn', 'collect', 'eval'])
+-
+-    tb_logger = SummaryWriter(os.path.join('./{}/log/'.format(cfg.exp_name), 'serial'))
+-    learner = BaseLearner(cfg.policy.learn.learner, policy.learn_mode, tb_logger, exp_name=cfg.exp_name)
+-    collector = create_serial_collector(
+-        cfg.policy.collect.collector,
+-        env=collector_env,
+-        policy=policy.collect_mode,
+-        tb_logger=tb_logger,
+-        exp_name=cfg.exp_name
+-    )
+-    evaluator = InteractionSerialEvaluator(
+-        cfg.policy.eval.evaluator, evaluator_env, policy.eval_mode, tb_logger, exp_name=cfg.exp_name
+-    )
+-
+-    learner.call_hook('before_run')
+-
+-    while True:
+-        if evaluator.should_eval(learner.train_iter):
+-            stop, reward = evaluator.eval(learner.save_checkpoint, learner.train_iter, collector.envstep)
+-            if stop:
+-                break
+-        new_data = collector.collect(train_iter=learner.train_iter)
+-
+-        learner.train(new_data, collector.envstep)
+-        if collector.envstep >= max_env_step or learner.train_iter >= max_train_iter:
+-            break
+-
+-    learner.call_hook('after_run')
+-
+-
+-if __name__ == "__main__":
+-    main([main_config, create_config], seed=0)
+\ No newline at end of file
+diff --git a/backend/sheep_ppo_seed0/formatted_total_config.py b/backend/sheep_ppo_seed0/formatted_total_config.py
+deleted file mode 100644
+index a4b30fd..0000000
+--- a/backend/sheep_ppo_seed0/formatted_total_config.py
++++ /dev/null
+@@ -1,148 +0,0 @@
+-from easydict import EasyDict
+-
+-main_config = dict(
+-    exp_name='sheep_ppo_seed0',
+-    env=dict(
+-        manager=dict(
+-            episode_num=float('inf'),
+-            max_retry=5,
+-            step_timeout=None,
+-            auto_reset=True,
+-            reset_timeout=None,
+-            retry_type='reset',
+-            retry_waiting_time=0.1,
+-            shared_memory=True,
+-            copy_on_get=True,
+-            context='fork',
+-            wait_num=float('inf'),
+-            step_wait_timeout=None,
+-            connect_timeout=60,
+-            reset_inplace=False,
+-            cfg_type='SyncSubprocessEnvManagerDict',
+-            type='subprocess',
+-        ),
+-        stop_value=15,
+-        action_clip=False,
+-        delay_reward_step=0,
+-        replay_path=None,
+-        save_replay_gif=False,
+-        replay_path_gif=None,
+-        cfg_type='MujocoEnvDict',
+-        env_id='Sheep-v0',
+-        level=2,
+-        collector_env_num=8,
+-        evaluator_env_num=10,
+-        n_evaluator_episode=10,
+-    ),
+-    policy=dict(
+-        model=dict(
+-        ),
+-        learn=dict(
+-            learner=dict(
+-                train_iterations=1000000000,
+-                dataloader=dict(
+-                    num_workers=0,
+-                ),
+-                log_policy=True,
+-                hook=dict(
+-                    load_ckpt_before_run='',
+-                    log_show_after_iter=100,
+-                    save_ckpt_after_iter=10000,
+-                    save_ckpt_after_run=True,
+-                ),
+-                cfg_type='BaseLearnerDict',
+-            ),
+-            multi_gpu=False,
+-            epoch_per_collect=10,
+-            batch_size=320,
+-            learning_rate=0.0003,
+-            value_weight=0.5,
+-            entropy_weight=0.001,
+-            clip_ratio=0.2,
+-            adv_norm=False,
+-            value_norm=True,
+-            ppo_param_init=True,
+-            grad_clip_type='clip_norm',
+-            grad_clip_value=0.5,
+-            ignore_done=False,
+-        ),
+-        collect=dict(
+-            collector=dict(
+-                deepcopy_obs=False,
+-                transform_obs=False,
+-                collect_print_freq=100,
+-                cfg_type='SampleSerialCollectorDict',
+-                type='sample',
+-            ),
+-            unroll_len=1,
+-            discount_factor=0.99,
+-            gae_lambda=0.95,
+-            n_sample=3200,
+-        ),
+-        eval=dict(
+-            evaluator=dict(
+-                eval_freq=500,
+-                render={'render_freq': -1, 'mode': 'train_iter'},
+-                cfg_type='InteractionSerialEvaluatorDict',
+-                n_episode=10,
+-                stop_value=15,
+-            ),
+-        ),
+-        other=dict(
+-            replay_buffer=dict(
+-                type='advanced',
+-                replay_buffer_size=4096,
+-                max_use=float('inf'),
+-                max_staleness=float('inf'),
+-                alpha=0.6,
+-                beta=0.4,
+-                anneal_step=100000,
+-                enable_track_used_data=False,
+-                deepcopy=False,
+-                thruput_controller=dict(
+-                    push_sample_rate_limit=dict(
+-                        max=float('inf'),
+-                        min=0,
+-                    ),
+-                    window_seconds=30,
+-                    sample_min_limit_ratio=1,
+-                ),
+-                monitor=dict(
+-                    sampled_data_attr=dict(
+-                        average_range=5,
+-                        print_freq=200,
+-                    ),
+-                    periodic_thruput=dict(
+-                        seconds=60,
+-                    ),
+-                ),
+-                cfg_type='AdvancedReplayBufferDict',
+-            ),
+-        ),
+-        cuda=True,
+-        on_policy=True,
+-        priority=False,
+-        priority_IS_weight=False,
+-        recompute_adv=True,
+-        action_space='discrete',
+-        nstep_return=False,
+-        multi_agent=False,
+-        transition_with_policy_data=True,
+-        cfg_type='PPOPolicyDict',
+-    ),
+-)
+-main_config = EasyDict(main_config)
+-main_config = main_config
+-create_config = dict(
+-    env=dict(
+-        type='mujoco',
+-        import_names=['dizoo.mujoco.envs.mujoco_env'],
+-    ),
+-    env_manager=dict(
+-        cfg_type='SyncSubprocessEnvManagerDict',
+-        type='subprocess',
+-    ),
+-    policy=dict(type='ppo'),
+-)
+-create_config = EasyDict(create_config)
+-create_config = create_config
+diff --git a/backend/sheep_ppo_seed0/git_diff.txt b/backend/sheep_ppo_seed0/git_diff.txt
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/backend/sheep_ppo_seed0/git_log.txt b/backend/sheep_ppo_seed0/git_log.txt
+deleted file mode 100644
+index 263ce97..0000000
+--- a/backend/sheep_ppo_seed0/git_log.txt
++++ /dev/null
+@@ -1,46 +0,0 @@
+-9827e15
+-
+-commit 9827e15a5810007d25f6934045e866df83735395
+-Author: Swain <niuyazhe314@outlook.com>
+-Date:   Wed Oct 19 00:15:54 2022 +0800
+-
+-    style(nyz): add ckpt download link
+-
+- README.md | 2 ++
+- 1 file changed, 2 insertions(+)
+-
+-commit 08db4cf3f58d37d21846ecf52d551fe5debd5fdf
+-Author: niuyazhe <niuyazhe@sensetime.com>
+-Date:   Wed Oct 19 00:13:04 2022 +0800
+-
+-    fix(nyz): fix app ip bug
+-
+- service/app.py | 1 +
+- 1 file changed, 1 insertion(+)
+-
+-commit e16390c04acde6ad47500e0ea8193962b1c87d43
+-Author: niuyazhe <niuyazhe@sensetime.com>
+-Date:   Tue Oct 18 23:54:19 2022 +0800
+-
+-    style(nyz): fix text description
+-
+- ui/src/App.tsx | 2 +-
+- 1 file changed, 1 insertion(+), 1 deletion(-)
+-
+-commit abb1028a16c0b3eb43724e8192d3756763c4f131
+-Author: niuyazhe <niuyazhe@sensetime.com>
+-Date:   Tue Oct 18 23:50:36 2022 +0800
+-
+-    feature(nyz): add max padding obs for level 1-4
+-
+- service/agent_app.py |  4 +--
+- service/app.py       | 16 ++++++-----
+- service/sheep_env.py | 79 +++++++++++++++++++++++++++++-----------------------
+- 3 files changed, 55 insertions(+), 44 deletions(-)
+-
+-commit 9f83c80b03238f15e13f180da09fd66e7b0eb3db
+-Merge: ad94646 bde2072
+-Author: niuyazhe <niuyazhe314@outlook.com>
+-Date:   Tue Oct 18 21:37:08 2022 +0800
+-
+-    Merge branch 'master' into dev-rl
+\ No newline at end of file
+diff --git a/backend/sheep_ppo_seed0/log/collector/collector_logger.txt b/backend/sheep_ppo_seed0/log/collector/collector_logger.txt
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/backend/sheep_ppo_seed0/log/evaluator/evaluator_logger.txt b/backend/sheep_ppo_seed0/log/evaluator/evaluator_logger.txt
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/backend/sheep_ppo_seed0/log/learner/learner_logger.txt b/backend/sheep_ppo_seed0/log/learner/learner_logger.txt
+deleted file mode 100644
+index ae8238f..0000000
+--- a/backend/sheep_ppo_seed0/log/learner/learner_logger.txt
++++ /dev/null
+@@ -1,114 +0,0 @@
+-[2022-12-29 19:04:31][base_learner.py:338][INFO] [RANK0]: DI-engine DRL Policy
+-SheepModel(
+-  (item_encoder): Transformer(
+-    (embedding): Sequential(
+-      (0): Linear(in_features=50, out_features=64, bias=True)
+-      (1): ReLU()
+-    )
+-    (act): ReLU()
+-    (dropout): Dropout(p=0.0, inplace=False)
+-    (main): Sequential(
+-      (0): TransformerLayer(
+-        (attention): Attention(
+-          (dropout): Dropout(p=0.0, inplace=False)
+-          (attention_pre): Sequential(
+-            (0): Linear(in_features=64, out_features=768, bias=True)
+-          )
+-          (project): Sequential(
+-            (0): Linear(in_features=256, out_features=64, bias=True)
+-          )
+-        )
+-        (layernorm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+-        (dropout): Dropout(p=0.0, inplace=False)
+-        (mlp): Sequential(
+-          (0): Sequential(
+-            (0): Linear(in_features=64, out_features=128, bias=True)
+-            (1): ReLU()
+-          )
+-          (1): Dropout(p=0.0, inplace=False)
+-          (2): Sequential(
+-            (0): Linear(in_features=128, out_features=64, bias=True)
+-            (1): ReLU()
+-          )
+-          (3): Dropout(p=0.0, inplace=False)
+-        )
+-        (layernorm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+-      )
+-      (1): TransformerLayer(
+-        (attention): Attention(
+-          (dropout): Dropout(p=0.0, inplace=False)
+-          (attention_pre): Sequential(
+-            (0): Linear(in_features=64, out_features=768, bias=True)
+-          )
+-          (project): Sequential(
+-            (0): Linear(in_features=256, out_features=64, bias=True)
+-          )
+-        )
+-        (layernorm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+-        (dropout): Dropout(p=0.0, inplace=False)
+-        (mlp): Sequential(
+-          (0): Sequential(
+-            (0): Linear(in_features=64, out_features=128, bias=True)
+-            (1): ReLU()
+-          )
+-          (1): Dropout(p=0.0, inplace=False)
+-          (2): Sequential(
+-            (0): Linear(in_features=128, out_features=64, bias=True)
+-            (1): ReLU()
+-          )
+-          (3): Dropout(p=0.0, inplace=False)
+-        )
+-        (layernorm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+-      )
+-      (2): TransformerLayer(
+-        (attention): Attention(
+-          (dropout): Dropout(p=0.0, inplace=False)
+-          (attention_pre): Sequential(
+-            (0): Linear(in_features=64, out_features=768, bias=True)
+-          )
+-          (project): Sequential(
+-            (0): Linear(in_features=256, out_features=64, bias=True)
+-          )
+-        )
+-        (layernorm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+-        (dropout): Dropout(p=0.0, inplace=False)
+-        (mlp): Sequential(
+-          (0): Sequential(
+-            (0): Linear(in_features=64, out_features=128, bias=True)
+-            (1): ReLU()
+-          )
+-          (1): Dropout(p=0.0, inplace=False)
+-          (2): Sequential(
+-            (0): Linear(in_features=128, out_features=64, bias=True)
+-            (1): ReLU()
+-          )
+-          (3): Dropout(p=0.0, inplace=False)
+-        )
+-        (layernorm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+-      )
+-    )
+-  )
+-  (bucket_encoder): Sequential(
+-    (0): Linear(in_features=30, out_features=64, bias=True)
+-    (1): ReLU()
+-    (2): Linear(in_features=64, out_features=64, bias=True)
+-    (3): ReLU()
+-    (4): Linear(in_features=64, out_features=64, bias=True)
+-    (5): ReLU()
+-  )
+-  (global_encoder): Sequential(
+-    (0): Linear(in_features=13, out_features=64, bias=True)
+-    (1): ReLU()
+-    (2): Linear(in_features=64, out_features=64, bias=True)
+-    (3): ReLU()
+-  )
+-  (value_head): Sequential(
+-    (0): Sequential(
+-      (0): Linear(in_features=64, out_features=64, bias=True)
+-      (1): ReLU()
+-      (2): Linear(in_features=64, out_features=64, bias=True)
+-      (3): ReLU()
+-    )
+-    (1): Linear(in_features=64, out_features=1, bias=True)
+-  )
+-)
+diff --git a/backend/sheep_ppo_seed0/log/serial/events.out.tfevents.1672311871.CN0014002306M.lan b/backend/sheep_ppo_seed0/log/serial/events.out.tfevents.1672311871.CN0014002306M.lan
+deleted file mode 100644
+index 3e31fc4..0000000
+Binary files a/backend/sheep_ppo_seed0/log/serial/events.out.tfevents.1672311871.CN0014002306M.lan and /dev/null differ
+diff --git a/backend/sheep_ppo_seed0/total_config.py b/backend/sheep_ppo_seed0/total_config.py
+deleted file mode 100644
+index c76be9f..0000000
+--- a/backend/sheep_ppo_seed0/total_config.py
++++ /dev/null
+@@ -1,140 +0,0 @@
+-exp_config = {
+-    'env': {
+-        'manager': {
+-            'episode_num': float("inf"),
+-            'max_retry': 5,
+-            'step_timeout': None,
+-            'auto_reset': True,
+-            'reset_timeout': None,
+-            'retry_type': 'reset',
+-            'retry_waiting_time': 0.1,
+-            'shared_memory': True,
+-            'copy_on_get': True,
+-            'context': 'fork',
+-            'wait_num': float("inf"),
+-            'step_wait_timeout': None,
+-            'connect_timeout': 60,
+-            'reset_inplace': False,
+-            'cfg_type': 'SyncSubprocessEnvManagerDict',
+-            'type': 'subprocess'
+-        },
+-        'stop_value': 15,
+-        'action_clip': False,
+-        'delay_reward_step': 0,
+-        'replay_path': None,
+-        'save_replay_gif': False,
+-        'replay_path_gif': None,
+-        'cfg_type': 'MujocoEnvDict',
+-        'type': 'mujoco',
+-        'import_names': ['dizoo.mujoco.envs.mujoco_env'],
+-        'env_id': 'Sheep-v0',
+-        'level': 2,
+-        'collector_env_num': 8,
+-        'evaluator_env_num': 10,
+-        'n_evaluator_episode': 10
+-    },
+-    'policy': {
+-        'model': {},
+-        'learn': {
+-            'learner': {
+-                'train_iterations': 1000000000,
+-                'dataloader': {
+-                    'num_workers': 0
+-                },
+-                'log_policy': True,
+-                'hook': {
+-                    'load_ckpt_before_run': '',
+-                    'log_show_after_iter': 100,
+-                    'save_ckpt_after_iter': 10000,
+-                    'save_ckpt_after_run': True
+-                },
+-                'cfg_type': 'BaseLearnerDict'
+-            },
+-            'multi_gpu': False,
+-            'epoch_per_collect': 10,
+-            'batch_size': 320,
+-            'learning_rate': 0.0003,
+-            'value_weight': 0.5,
+-            'entropy_weight': 0.001,
+-            'clip_ratio': 0.2,
+-            'adv_norm': False,
+-            'value_norm': True,
+-            'ppo_param_init': True,
+-            'grad_clip_type': 'clip_norm',
+-            'grad_clip_value': 0.5,
+-            'ignore_done': False
+-        },
+-        'collect': {
+-            'collector': {
+-                'deepcopy_obs': False,
+-                'transform_obs': False,
+-                'collect_print_freq': 100,
+-                'cfg_type': 'SampleSerialCollectorDict',
+-                'type': 'sample'
+-            },
+-            'unroll_len': 1,
+-            'discount_factor': 0.99,
+-            'gae_lambda': 0.95,
+-            'n_sample': 3200
+-        },
+-        'eval': {
+-            'evaluator': {
+-                'eval_freq': 500,
+-                'render': {
+-                    'render_freq': -1,
+-                    'mode': 'train_iter'
+-                },
+-                'cfg_type': 'InteractionSerialEvaluatorDict',
+-                'n_episode': 10,
+-                'stop_value': 15
+-            }
+-        },
+-        'other': {
+-            'replay_buffer': {
+-                'type': 'advanced',
+-                'replay_buffer_size': 4096,
+-                'max_use': float("inf"),
+-                'max_staleness': float("inf"),
+-                'alpha': 0.6,
+-                'beta': 0.4,
+-                'anneal_step': 100000,
+-                'enable_track_used_data': False,
+-                'deepcopy': False,
+-                'thruput_controller': {
+-                    'push_sample_rate_limit': {
+-                        'max': float("inf"),
+-                        'min': 0
+-                    },
+-                    'window_seconds': 30,
+-                    'sample_min_limit_ratio': 1
+-                },
+-                'monitor': {
+-                    'sampled_data_attr': {
+-                        'average_range': 5,
+-                        'print_freq': 200
+-                    },
+-                    'periodic_thruput': {
+-                        'seconds': 60
+-                    }
+-                },
+-                'cfg_type': 'AdvancedReplayBufferDict'
+-            },
+-            'commander': {
+-                'cfg_type': 'BaseSerialCommanderDict'
+-            }
+-        },
+-        'type': 'ppo',
+-        'cuda': True,
+-        'on_policy': True,
+-        'priority': False,
+-        'priority_IS_weight': False,
+-        'recompute_adv': True,
+-        'action_space': 'discrete',
+-        'nstep_return': False,
+-        'multi_agent': False,
+-        'transition_with_policy_data': True,
+-        'cfg_type': 'PPOPolicyDict'
+-    },
+-    'exp_name': 'sheep_ppo_seed0',
+-    'seed': 0
+-}
+diff --git a/backend/test_sheep_env.py b/backend/test_sheep_env.py
+deleted file mode 100644
+index 66c66d1..0000000
+--- a/backend/test_sheep_env.py
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import pytest
+-import numpy as np
+-from sheep_env import SheepEnv
+-
+-
+-@pytest.mark.unittest
+-def test_naive():
+-    env = SheepEnv(level=9)
+-    obs = env.reset()
+-    print(env.observation_space)
+-
+-    while True:
+-        action_mask = obs['action_mask']
+-        action = np.random.choice(len(action_mask), p=action_mask / action_mask.sum())
+-        obs, rew, done, info = env.step(action)
+-        print(env.bucket, rew, done)
+-        assert isinstance(obs, dict)
+-        assert set(obs.keys()) == set(['item_obs', 'bucket_obs', 'global_obs', 'action_mask'])
+-        assert np.isscalar(rew)
+-        assert isinstance(done, bool)
+-        assert isinstance(info, dict)
+-        if done:
+-            break
+diff --git a/backend/test_sheep_model.py b/backend/test_sheep_model.py
+deleted file mode 100644
+index 40eaf4b..0000000
+--- a/backend/test_sheep_model.py
++++ /dev/null
+@@ -1,19 +0,0 @@
+-import pytest
+-import torch
+-from sheep_model import SheepModel
+-
+-
+-@pytest.mark.unittest
+-def test_naive():
+-    B, M = 3, 30
+-    model = SheepModel(item_num=30, item_encoder_type='two_stage_MLP')
+-    data = {
+-        'item_obs': torch.randn(B, M, 60),
+-        'bucket_obs': torch.randn(B, 30),
+-        'global_obs': torch.randn(B, 17),
+-        'action_mask': torch.randint(0, 2, size=(M, )).bool()
+-    }
+-
+-    output = model.forward(data, mode='compute_actor_critic')
+-    assert output['logit'].shape == (B, M)
+-    assert output['value'].shape == (B, )
+diff --git a/frontend/.gitignore b/frontend/.gitignore
+index 185e663..c0c8cb8 100644
+--- a/frontend/.gitignore
++++ b/frontend/.gitignore
+@@ -1,5 +1,5 @@
+ .DS_Store
+-node_modules
++../node_modules
+ /dist
+ 
+ # local env files
+diff --git a/frontend/README.md b/frontend/README.md
+index c77722f..3dc07ef 100644
+--- a/frontend/README.md
++++ b/frontend/README.md
+@@ -4,11 +4,11 @@
+ 
+ ***本仓库代码仅供个人业余研究AI用，代码肯定存在有很多不完善的地方，精力和专业所限请谅解***
+ 
+-![二维码](./images/gobang2.png)
++![二维码](imagesobang2.png)
+ 
+ 极小化极大算法的五子棋AI实现。 扫描上方二维码，或者打开此页面可以直接体验 [http://gobang2.light7.cn/](http://gobang2.light7.cn/)
+ 
+-![截图](./images/ss.png)
++![截图](imagess.png)
+ 
+ 如果你对机器学习、神经网络有兴趣，这里有一个基于Alpha Zero原理的AI [alpha-zero-gobang](https://github.com/lihongxun945/alpha-zero-gobang) 正在开发中，Tensorflow2.x实现，有兴趣的可以关注交流。
+ 
+diff --git a/service/__pycache__/agent_app.cpython-311.pyc b/service/__pycache__/agent_app.cpython-311.pyc
+deleted file mode 100644
+index fbfc6af..0000000
+Binary files a/service/__pycache__/agent_app.cpython-311.pyc and /dev/null differ
+diff --git a/service/__pycache__/agent_app.cpython-38.pyc b/service/__pycache__/agent_app.cpython-38.pyc
+deleted file mode 100644
+index 7fd9cf0..0000000
+Binary files a/service/__pycache__/agent_app.cpython-38.pyc and /dev/null differ
+diff --git a/service/__pycache__/sheep_env.cpython-38.pyc b/service/__pycache__/sheep_env.cpython-38.pyc
+deleted file mode 100644
+index dc5827b..0000000
+Binary files a/service/__pycache__/sheep_env.cpython-38.pyc and /dev/null differ
+diff --git a/service/__pycache__/sheep_model.cpython-38.pyc b/service/__pycache__/sheep_model.cpython-38.pyc
+deleted file mode 100644
+index 51908c8..0000000
+Binary files a/service/__pycache__/sheep_model.cpython-38.pyc and /dev/null differ

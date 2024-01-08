@@ -1,0 +1,76 @@
+01f85bf
+
+commit 01f85bfdb0f83ae6949c997df0706c30a838cee8
+Author: 蒲源 <2402552459@qq.com>
+Date:   Mon Jan 8 03:33:57 2024 +0800
+
+    feature(pu): add init version of gomoku server(backend) and ui(frontend)
+
+ package.json                                       |   6 +-
+ service/__pycache__/agent_app.cpython-311.pyc      | Bin 0 -> 8073 bytes
+ service/__pycache__/agent_app.cpython-38.pyc       | Bin 0 -> 4828 bytes
+ service/__pycache__/sheep_env.cpython-38.pyc       | Bin 0 -> 7362 bytes
+ service/__pycache__/sheep_model.cpython-38.pyc     | Bin 0 -> 4158 bytes
+ service/agent_app.py                               | 251 +++++++++++++++++++++
+ service/agent_app_bkp.py                           | 190 ++++++++++++++++
+ service/app.py                                     | 136 +++++++++++
+ service/ckpt_best.pth.tar                          | Bin 0 -> 3403809 bytes
+ service/flask_hello.py                             |   7 +
+ service/requirement-train.txt                      |   1 +
+ service/requirement.txt                            |   8 +
+ service/sheep_env.py                               | 248 ++++++++++++++++++++
+ service/sheep_model.py                             | 126 +++++++++++
+ service/sheep_ppo_level9_main.py                   | 123 ++++++++++
+ service/sheep_ppo_main.py                          | 122 ++++++++++
+ service/sheep_ppo_seed0/formatted_total_config.py  | 148 ++++++++++++
+ service/sheep_ppo_seed0/git_diff.txt               |   0
+ service/sheep_ppo_seed0/git_log.txt                |  46 ++++
+ .../log/collector/collector_logger.txt             |   0
+ .../log/evaluator/evaluator_logger.txt             |   0
+ .../sheep_ppo_seed0/log/learner/learner_logger.txt | 114 ++++++++++
+ ...vents.out.tfevents.1672311871.CN0014002306M.lan | Bin 0 -> 40 bytes
+ service/sheep_ppo_seed0/total_config.py            | 140 ++++++++++++
+ service/test_sheep_env.py                          |  23 ++
+ service/test_sheep_model.py                        |  19 ++
+ src/App.js                                         |   3 +
+ src/components/board.js                            |  47 +++-
+ src/components/control.js                          |   2 +
+ src/minmax.worker.js                               |  31 ++-
+ 30 files changed, 1783 insertions(+), 8 deletions(-)
+
+commit 7d59a631d910003f0dd11ebcd7fbdaf06c4f493e
+Author: xun <lihongxun945@gmail.com>
+Date:   Wed Dec 6 22:57:04 2023 +0800
+
+    删除 package-lock 文件
+
+ package-lock.json | 17744 ----------------------------------------------------
+ 1 file changed, 17744 deletions(-)
+
+commit 3132df6005d7d22a128fde4c10853f54c5a1dd38
+Author: xun <lihongxun945@gmail.com>
+Date:   Wed Dec 6 22:11:22 2023 +0800
+
+    删除不用文件
+
+ a.png |  Bin 900372 -> 0 bytes
+ tmp   | 1188 -----------------------------------------------------------------
+ 2 files changed, 1188 deletions(-)
+
+commit ddbf02c72c493bbfbc33d3fd06fbba38757e3a3b
+Author: hongxun.lhx <hongxun.lhx@alibaba-inc.com>
+Date:   Thu Nov 23 11:13:24 2023 +0800
+
+    增加了QQ群
+
+ README.md | 2 ++
+ 1 file changed, 2 insertions(+)
+
+commit 29afa107e9360120fd4c206a2da70acfac00fe9d
+Author: hongxun.lhx <hongxun.lhx@alibaba-inc.com>
+Date:   Thu Nov 23 11:06:06 2023 +0800
+
+    update readme
+
+ README.md | 2 ++
+ 1 file changed, 2 insertions(+)
